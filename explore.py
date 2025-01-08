@@ -1,10 +1,45 @@
 import sys
+import logging
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton,
-    QLineEdit, QListWidget, QLabel, QComboBox
+    QLineEdit, QListWidget, QLabel, QComboBox, QCheckBox  # Added QCheckBox here
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from googlesearch import search
+
+# Configure logging
+logging.basicConfig(level=logging.ERROR)
+
+class SearchThread(QThread):
+    """Thread to perform the Google search in the background."""
+    search_finished = pyqtSignal(list, str)  # Signal to emit search results and status
+
+    def __init__(self, query, country_code, search_in_domains=False):
+        super().__init__()
+        self.query = query
+        self.country_code = country_code
+        self.search_in_domains = search_in_domains
+
+    def run(self):
+        try:
+            if self.country_code:
+                self.query += f" cr:{self.country_code}"
+
+            # If search_in_domains is True, search within specific domains
+            if self.search_in_domains:
+                domains = ["site:ae", "site:sa", "site:om"]
+                results = []
+                for domain in domains:
+                    domain_query = f"{self.query} {domain}"
+                    domain_results = list(search(domain_query, num_results=10))
+                    results.extend(domain_results)
+            else:
+                results = list(search(self.query, num_results=10))
+
+            self.search_finished.emit(results, f"Found {len(results)} result(s).")
+        except Exception as e:
+            logging.error(f"Search error: {e}")
+            self.search_finished.emit([], "An error occurred. Please try again later.")
 
 class MoodleSearchApp(QMainWindow):
     def __init__(self):
@@ -42,10 +77,19 @@ class MoodleSearchApp(QMainWindow):
         self.country_selector.addItem("Bahrain", "bh")
         self.layout.addWidget(self.country_selector)
 
+        # Checkbox to search within specific domains (ae, sa, om)
+        self.domain_checkbox = QCheckBox("Search within UAE, Saudi Arabia, and Oman domains", self)
+        self.layout.addWidget(self.domain_checkbox)
+
         # Search button
         self.search_button = QPushButton("Search", self)
         self.search_button.clicked.connect(self.perform_search)
         self.layout.addWidget(self.search_button)
+
+        # Clear button
+        self.clear_button = QPushButton("Clear", self)
+        self.clear_button.clicked.connect(self.clear_results)
+        self.layout.addWidget(self.clear_button)
 
         # Label to display status or instructions
         self.status_label = QLabel("Enter a search query and click 'Search'", self)
@@ -56,10 +100,14 @@ class MoodleSearchApp(QMainWindow):
         self.results_list = QListWidget(self)
         self.layout.addWidget(self.results_list)
 
+        # Thread for search
+        self.search_thread = None
+
     def perform_search(self):
-        # Get query from input field
+        """Perform a Google search based on the user's input."""
         query = self.search_input.text().strip()
         country_code = self.country_selector.currentData()
+        search_in_domains = self.domain_checkbox.isChecked()
 
         if not query:
             self.status_label.setText("Please enter a valid search query.")
@@ -67,24 +115,25 @@ class MoodleSearchApp(QMainWindow):
 
         self.status_label.setText("Searching...")
         self.results_list.clear()
+        self.search_button.setEnabled(False)  # Disable search button during search
 
-        try:
-            # Add country-specific restriction if specified
-            if country_code:
-                query += f" cr:{country_code}"
+        # Start the search in a separate thread
+        self.search_thread = SearchThread(query, country_code, search_in_domains)
+        self.search_thread.search_finished.connect(self.update_results)
+        self.search_thread.start()
 
-            # Perform Google search
-            results = list(search(query, num_results=10))
+    def update_results(self, results, status):
+        """Update the UI with search results and status."""
+        if results:
+            self.results_list.addItems(results)
+        self.status_label.setText(status)
+        self.search_button.setEnabled(True)  # Re-enable search button
 
-            if results:
-                self.results_list.addItems(results)
-                self.status_label.setText(f"Found {len(results)} result(s).")
-            else:
-                self.status_label.setText("No results found.")
-
-        except Exception as e:
-            self.status_label.setText("An error occurred. Please try again later.")
-            print(f"Error: {e}")
+    def clear_results(self):
+        """Clear the search input and results."""
+        self.search_input.clear()
+        self.results_list.clear()
+        self.status_label.setText("Enter a search query and click 'Search'")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
