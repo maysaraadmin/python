@@ -1,8 +1,9 @@
 import sys
 import logging
+import webbrowser  # Import the webbrowser module
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton,
-    QLineEdit, QListWidget, QLabel, QComboBox, QCheckBox  # Added QCheckBox here
+    QLineEdit, QListWidget, QLabel, QComboBox, QCheckBox
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from googlesearch import search
@@ -98,6 +99,7 @@ class MoodleSearchApp(QMainWindow):
 
         # List widget to display search results
         self.results_list = QListWidget(self)
+        self.results_list.itemDoubleClicked.connect(self.open_url)  # Connect double-click event
         self.layout.addWidget(self.results_list)
 
         # Thread for search
@@ -134,6 +136,11 @@ class MoodleSearchApp(QMainWindow):
         self.search_input.clear()
         self.results_list.clear()
         self.status_label.setText("Enter a search query and click 'Search'")
+
+    def open_url(self, item):
+        """Open the selected URL in the default web browser."""
+        url = item.text()  # Get the URL from the selected item
+        webbrowser.open(url)  # Open the URL in the default browser
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
