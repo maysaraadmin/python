@@ -1,6 +1,6 @@
 import sys
 import logging
-import webbrowser  # Import the webbrowser module
+import webbrowser
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton,
     QLineEdit, QListWidget, QLabel, QComboBox, QCheckBox
@@ -10,6 +10,24 @@ from googlesearch import search
 
 # Configure logging
 logging.basicConfig(level=logging.ERROR)
+
+# Dictionary of country codes, full names, and their national domains
+COUNTRY_DATA = {
+    "us": {"name": "United States", "domain": "site:us"},
+    "uk": {"name": "United Kingdom", "domain": "site:uk"},
+    "ca": {"name": "Canada", "domain": "site:ca"},
+    "au": {"name": "Australia", "domain": "site:au"},
+    "in": {"name": "India", "domain": "site:in"},
+    "de": {"name": "Germany", "domain": "site:de"},
+    "fr": {"name": "France", "domain": "site:fr"},
+    "ae": {"name": "United Arab Emirates", "domain": "site:ae"},
+    "sa": {"name": "Saudi Arabia", "domain": "site:sa"},
+    "om": {"name": "Oman", "domain": "site:om"},
+    "qa": {"name": "Qatar", "domain": "site:qa"},
+    "kw": {"name": "Kuwait", "domain": "site:kw"},
+    "bh": {"name": "Bahrain", "domain": "site:bh"},
+    # Add more countries as needed
+}
 
 class SearchThread(QThread):
     """Thread to perform the Google search in the background."""
@@ -23,18 +41,23 @@ class SearchThread(QThread):
 
     def run(self):
         try:
-            if self.country_code:
-                self.query += f" cr:{self.country_code}"
-
-            # If search_in_domains is True, search within specific domains
+            results = []
             if self.search_in_domains:
-                domains = ["site:ae", "site:sa", "site:om"]
-                results = []
-                for domain in domains:
+                if self.country_code:
+                    # Search within the selected country's domain
+                    domain = COUNTRY_DATA[self.country_code]["domain"]
                     domain_query = f"{self.query} {domain}"
-                    domain_results = list(search(domain_query, num_results=10))
-                    results.extend(domain_results)
+                    results = list(search(domain_query, num_results=10))
+                else:
+                    # Search within all country domains
+                    for code, data in COUNTRY_DATA.items():
+                        domain_query = f"{self.query} {data['domain']}"
+                        domain_results = list(search(domain_query, num_results=10))
+                        results.extend(domain_results)
             else:
+                # Perform a general search
+                if self.country_code:
+                    self.query += f" cr:{self.country_code}"
                 results = list(search(self.query, num_results=10))
 
             self.search_finished.emit(results, f"Found {len(results)} result(s).")
@@ -63,23 +86,12 @@ class MoodleSearchApp(QMainWindow):
         # Dropdown for country selection
         self.country_selector = QComboBox(self)
         self.country_selector.addItem("All Countries", "")
-        self.country_selector.addItem("United States", "us")
-        self.country_selector.addItem("United Kingdom", "uk")
-        self.country_selector.addItem("Canada", "ca")
-        self.country_selector.addItem("Australia", "au")
-        self.country_selector.addItem("India", "in")
-        self.country_selector.addItem("Germany", "de")
-        self.country_selector.addItem("France", "fr")
-        self.country_selector.addItem("United Arab Emirates", "ae")
-        self.country_selector.addItem("Saudi Arabia", "sa")
-        self.country_selector.addItem("Oman", "om")
-        self.country_selector.addItem("Qatar", "qa")
-        self.country_selector.addItem("Kuwait", "kw")
-        self.country_selector.addItem("Bahrain", "bh")
+        for code, data in COUNTRY_DATA.items():
+            self.country_selector.addItem(data["name"], code)
         self.layout.addWidget(self.country_selector)
 
-        # Checkbox to search within specific domains (ae, sa, om)
-        self.domain_checkbox = QCheckBox("Search within UAE, Saudi Arabia, and Oman domains", self)
+        # Checkbox to search within specific domains
+        self.domain_checkbox = QCheckBox("Search within national domains", self)
         self.layout.addWidget(self.domain_checkbox)
 
         # Search button
@@ -99,7 +111,7 @@ class MoodleSearchApp(QMainWindow):
 
         # List widget to display search results
         self.results_list = QListWidget(self)
-        self.results_list.itemDoubleClicked.connect(self.open_url)  # Connect double-click event
+        self.results_list.itemDoubleClicked.connect(self.open_url)
         self.layout.addWidget(self.results_list)
 
         # Thread for search
@@ -139,8 +151,8 @@ class MoodleSearchApp(QMainWindow):
 
     def open_url(self, item):
         """Open the selected URL in the default web browser."""
-        url = item.text()  # Get the URL from the selected item
-        webbrowser.open(url)  # Open the URL in the default browser
+        url = item.text()
+        webbrowser.open(url)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
