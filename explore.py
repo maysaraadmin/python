@@ -9,7 +9,11 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from googlesearch import search
 
 # Configure logging
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(
+    level=logging.ERROR,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    filename="moodle_search.log"
+)
 
 # Dictionary of country codes, full names, and their national domains
 COUNTRY_DATA = {
@@ -46,19 +50,19 @@ class SearchThread(QThread):
                 if self.country_code:
                     # Search within the selected country's domain
                     domain = COUNTRY_DATA[self.country_code]["domain"]
-                    domain_query = f"{self.query} {domain}"
-                    results = list(search(domain_query, num_results=10))
+                    query = f"{self.query} {domain}"
+                    results = list(search(query, num_results=10))
                 else:
                     # Search within all country domains
                     for code, data in COUNTRY_DATA.items():
-                        domain_query = f"{self.query} {data['domain']}"
-                        domain_results = list(search(domain_query, num_results=10))
-                        results.extend(domain_results)
+                        query = f"{self.query} {data['domain']}"
+                        results.extend(list(search(query, num_results=10)))
             else:
                 # Perform a general search
+                query = self.query
                 if self.country_code:
-                    self.query += f" cr:{self.country_code}"
-                results = list(search(self.query, num_results=10))
+                    query += f" cr:{self.country_code}"
+                results = list(search(query, num_results=10))
 
             self.search_finished.emit(results, f"Found {len(results)} result(s).")
         except Exception as e:
@@ -81,6 +85,7 @@ class MoodleSearchApp(QMainWindow):
         # Input field for search query
         self.search_input = QLineEdit(self)
         self.search_input.setPlaceholderText("Enter a search term (e.g., 'Moodle LMS')")
+        self.search_input.setToolTip("Enter a search term, e.g., 'Moodle LMS'")
         self.layout.addWidget(self.search_input)
 
         # Dropdown for country selection
@@ -88,20 +93,24 @@ class MoodleSearchApp(QMainWindow):
         self.country_selector.addItem("All Countries", "")
         for code, data in COUNTRY_DATA.items():
             self.country_selector.addItem(data["name"], code)
+        self.country_selector.setToolTip("Select a country to filter results")
         self.layout.addWidget(self.country_selector)
 
         # Checkbox to search within specific domains
         self.domain_checkbox = QCheckBox("Search within national domains", self)
+        self.domain_checkbox.setToolTip("Search within national domains for more specific results")
         self.layout.addWidget(self.domain_checkbox)
 
         # Search button
         self.search_button = QPushButton("Search", self)
         self.search_button.clicked.connect(self.perform_search)
+        self.search_button.setToolTip("Start the search")
         self.layout.addWidget(self.search_button)
 
         # Clear button
         self.clear_button = QPushButton("Clear", self)
         self.clear_button.clicked.connect(self.clear_results)
+        self.clear_button.setToolTip("Clear the search results")
         self.layout.addWidget(self.clear_button)
 
         # Label to display status or instructions
@@ -119,12 +128,20 @@ class MoodleSearchApp(QMainWindow):
 
     def perform_search(self):
         """Perform a Google search based on the user's input."""
+        if self.search_thread and self.search_thread.isRunning():
+            self.status_label.setText("A search is already in progress.")
+            return
+
         query = self.search_input.text().strip()
         country_code = self.country_selector.currentData()
         search_in_domains = self.domain_checkbox.isChecked()
 
         if not query:
             self.status_label.setText("Please enter a valid search query.")
+            return
+
+        if len(query) > 200:
+            self.status_label.setText("Search query is too long. Please shorten it.")
             return
 
         self.status_label.setText("Searching...")
@@ -140,7 +157,9 @@ class MoodleSearchApp(QMainWindow):
         """Update the UI with search results and status."""
         if results:
             self.results_list.addItems(results)
-        self.status_label.setText(status)
+            self.status_label.setText(f"Found {len(results)} result(s).")
+        else:
+            self.status_label.setText("No results found. Please refine your search.")
         self.search_button.setEnabled(True)  # Re-enable search button
 
     def clear_results(self):
@@ -153,6 +172,13 @@ class MoodleSearchApp(QMainWindow):
         """Open the selected URL in the default web browser."""
         url = item.text()
         webbrowser.open(url)
+
+    def closeEvent(self, event):
+        """Ensure the search thread is terminated when the window is closed."""
+        if self.search_thread and self.search_thread.isRunning():
+            self.search_thread.quit()
+            self.search_thread.wait()
+        event.accept()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

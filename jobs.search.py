@@ -1,9 +1,9 @@
 import sys
-import requests
 import random
 import logging
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QListWidget, QMessageBox, QTextEdit
+from googlesearch import search  # Import the Google Search function
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -17,34 +17,26 @@ class JobSearchThread(QThread):
         self.job_titles = job_titles
 
     def run(self):
-        searx_url = "https://searx.space/search"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        }
-
         for job_title in self.job_titles:
             try:
-                self.results_ready.emit(f"Searching for '{job_title}' globally...\n")
-                params = {"q": f"{job_title} jobs", "format": "json"}
-                response = requests.get(searx_url, headers=headers, params=params, timeout=10)
-                response.raise_for_status()
+                self.results_ready.emit(f"Searching for '{job_title}' jobs on Google...\n")
+                
+                # Perform Google search
+                search_results = search(
+                    f"{job_title} jobs",  # Search query as the first positional argument
+                    stop=10,  # Stop after fetching 10 results
+                    pause=2.0  # Delay between requests (in seconds)
+                )
 
-                data = response.json()
-                if "results" not in data or not data["results"]:
+                if not search_results:
                     self.results_ready.emit(f"No jobs found for '{job_title}'.\n")
                     continue
 
-                for result in data["results"]:
-                    title = result.get("title", "No Title")
-                    link = result.get("url", "No Link")
-                    snippet = result.get("content", "No Description")
-                    self.results_ready.emit(f"Title: {title}\nLink: {link}\nDescription: {snippet}\n")
+                for result in search_results:
+                    self.results_ready.emit(f"Link: {result}\n")
                     self.results_ready.emit("-" * 50 + "\n")
 
-                # Add a random delay to avoid hitting rate limits
-                self.sleep(random.randint(2, 5))
-
-            except requests.RequestException as e:
+            except Exception as e:
                 logging.error(f"Error fetching jobs for '{job_title}': {e}")
                 self.error_occurred.emit(f"Error fetching jobs for '{job_title}': {e}\n")
 
